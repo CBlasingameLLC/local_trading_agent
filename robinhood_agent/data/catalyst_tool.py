@@ -50,3 +50,39 @@ def analyze_premarket_catalyst(ticker_symbol: str):
 
 if __name__ == "__main__":
     analyze_premarket_catalyst("NVDA")
+
+def get_raw_sentiment_score(ticker_symbol: str) -> float:
+    """Returns the raw FinBERT sentiment float for the automated loop."""
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+        news = ticker.news
+        if not news:
+            return 0.0
+            
+        headlines = []
+        for item in news[:5]:
+            # Robustly extract the headline due to changing yfinance API structures
+            title = item.get('title')
+            # If 'title' isn't at the top level, check if it's nested under 'content'
+            if not title and 'content' in item:
+                title = item['content'].get('title')
+            
+            if title and isinstance(title, str):
+                headlines.append(title)
+                
+        if not headlines:
+            print(f"Could not parse any headlines for {ticker_symbol}.")
+            return 0.0
+
+        total_score = 0.0
+        for headline in headlines:
+            result = sentiment_analyzer(headline, truncation=True)[0]
+            label = result['label']
+            score = result['score']
+            vector = score if label == "positive" else (-score if label == "negative" else 0.0)
+            total_score += vector
+            
+        return total_score / len(headlines)
+    except Exception as e:
+        print(f"Sentiment error for {ticker_symbol}: {e}")
+        return 0.0

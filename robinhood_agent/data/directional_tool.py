@@ -59,3 +59,29 @@ def get_directional_swing_setup(ticker_symbol: str):
 if __name__ == "__main__":
     # Test on a highly liquid stock
     get_directional_swing_setup("AAPL")
+
+def get_quantitative_metrics(ticker_symbol: str) -> dict:
+    """Returns raw numerical data for the automated trading loop."""
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+        hist = ticker.history(period="1y")
+        
+        if hist.empty:
+            return {"current_price": 0.0, "is_bullish_aligned": False}
+            
+        close = hist['Close']
+        current_price = close.iloc[-1]
+        sma_20 = close.rolling(window=20).mean().iloc[-1]
+        sma_50 = close.rolling(window=50).mean().iloc[-1]
+        sma_200 = close.rolling(window=200).mean().iloc[-1]
+        
+        # True if price is cascading upwards across all timeframes
+        is_bullish_aligned = current_price > sma_20 and sma_20 > sma_50 and sma_50 > sma_200
+        
+        return {
+            "current_price": current_price,
+            "is_bullish_aligned": is_bullish_aligned
+        }
+    except Exception as e:
+        print(f"Metrics error for {ticker_symbol}: {e}")
+        return {"current_price": 0.0, "is_bullish_aligned": False}
