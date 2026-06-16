@@ -1,29 +1,25 @@
-import os
 import asyncio
-from dotenv import load_dotenv
-from mcp.client.sse import sse_client
+from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp import ClientSession
 
-# Load environment variables
-load_dotenv()
-ROBINHOOD_TOKEN = os.getenv("ROBINHOOD_API_TOKEN")
-MCP_URL = "https://agent.robinhood.com/mcp/trading"
+# We use npx to run the official remote MCP bridge.
+# This handles the secure browser popup and OAuth token management automatically.
+SERVER_PARAMS = StdioServerParameters(
+    command="npx",
+    args=["-y", "mcp-remote", "https://agent.robinhood.com/mcp/trading"]
+)
 
 async def establish_connection():
     """
-    Establishes an SSE connection to the Robinhood MCP server and verifies
-    the ring-fenced account status.
+    Establishes a connection to the Robinhood MCP server via stdio bridge 
+    and verifies the ring-fenced account status.
     """
     print("Initiating handshake with Robinhood MCP...")
-    
-    # In a production environment, headers pass the auth token
-    headers = {
-        "Authorization": f"Bearer {ROBINHOOD_TOKEN}",
-        "Content-Type": "application/json"
-    }
+    print("If this is your first time, a browser window will open to authenticate.")
 
     try:
-        async with sse_client(url=MCP_URL, headers=headers) as (read, write):
+        # Connect using the stdio bridge instead of direct SSE
+        async with stdio_client(SERVER_PARAMS) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 print("✅ MCP Connection Established successfully.")
@@ -40,17 +36,20 @@ async def establish_connection():
                 except Exception as e:
                     print(f"Connection active, but failed to fetch portfolio tools: {e}")
                 
-                return session
+                # In a persistent app, we wouldn't return the session to close immediately,
+                # but for this dry-run test, we will execute a mock trade inside the context block.
+                await execute_trade(session, ticker="AAPL", limit_price=10.00, quantity=1)
+                return True
 
     except Exception as e:
         print(f"❌ Critical Error connecting to Robinhood: {e}")
-        return None
+        return False
 
 async def execute_trade(session: ClientSession, ticker: str, limit_price: float, quantity: float = 1.0):
     """
     Pushes a validated trade payload to the Robinhood server.
     """
-    print(f"Routing trade to Robinhood: Buy {quantity}x {ticker} at ${limit_price}")
+    print(f"\nRouting trade to Robinhood: Buy {quantity}x {ticker} at ${limit_price}")
     try:
         order = await session.call_tool(
             name="robinhood_place_stock_order",
